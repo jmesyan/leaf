@@ -11,6 +11,9 @@ var (
 	LogLevel string
 	LogPath  string
 	LogFlag  int
+	LogMaxNumber int32
+	LogMaxSize   int64
+	LogUint      log.UNIT
 
 	// console
 	ConsolePort   int
@@ -27,6 +30,9 @@ type BaseConf struct {
 	LogLevel    string
 	LogPath     string
 	LogFlag    int
+	LogMaxNumber int32
+	LogMaxSize   int64
+	LogUint      log.UNIT
 	WSAddr      string
 	CertFile    string
 	KeyFile     string
@@ -43,6 +49,9 @@ func globalConfInit(cconf *BaseConf){
 	LogLevel = cconf.LogLevel
 	LogPath = cconf.LogPath
 	LogFlag = cconf.LogFlag
+	LogMaxNumber = cconf.LogMaxNumber
+	LogMaxSize = cconf.LogMaxSize
+	LogUint = cconf.LogUint
 	ConsolePort = cconf.ConsolePort
 }
 

@@ -1,153 +1,347 @@
 package log
 
+/*
+https://github.com/donnie4w
+*/
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
-	"path"
-	"strings"
+	"runtime"
+	"strconv"
+	"sync"
 	"time"
 )
 
-// levels
 const (
-	debugLevel   = 0
-	releaseLevel = 1
-	errorLevel   = 2
-	fatalLevel   = 3
+	_VER string = "1.0.2"
+)
+
+type LEVEL int32
+
+var logLevel LEVEL = 1
+var maxFileSize int64
+var maxFileCount int32
+var dailyRolling bool = true
+var consoleAppender bool = true
+var RollingFile bool = false
+var logObj *_FILE
+
+const DATEFORMAT = "2006-01"
+
+type UNIT int64
+
+const (
+	_       = iota
+	KB UNIT = 1 << (iota * 10)
+	MB
+	GB
+	TB
 )
 
 const (
-	printDebugLevel   = "[debug  ] "
-	printReleaseLevel = "[release] "
-	printErrorLevel   = "[error  ] "
-	printFatalLevel   = "[fatal  ] "
+	ALL LEVEL = iota
+	DEBUG
+	INFO
+	WARN
+	ERROR
+	FATAL
+	OFF
 )
 
-type Logger struct {
-	level      int
-	baseLogger *log.Logger
-	baseFile   *os.File
+var (
+	debug_str         = "debug"
+	info_str          = "info"
+	warn_str          = "\033[036;1mwarn\033[036;0m"
+	error_str         = "\033[031;1merror\033[031;0m"
+	fatal_str         = "\033[031;1mfatal\033[031;0m"
+)
+
+const (
+	_ = iota
+	ROLLINGDAILY
+	ROLLINGFILE
+)
+
+func init(){
+	if runtime.GOOS == "windows"{
+		warn_str          = "warn"
+		error_str         = "error"
+		fatal_str         = "fatal"
+	}
 }
 
-func New(strLevel string, pathname string, flag int) (*Logger, error) {
-	// level
-	var level int
-	switch strings.ToLower(strLevel) {
-	case "debug":
-		level = debugLevel
-	case "release":
-		level = releaseLevel
-	case "error":
-		level = errorLevel
-	case "fatal":
-		level = fatalLevel
-	default:
-		return nil, errors.New("unknown level: " + strLevel)
-	}
+type _FILE struct {
+	dir      string
+	filename string
+	_suffix  int
+	isCover  bool
+	_date    *time.Time
+	mu       *sync.RWMutex
+	logfile  *os.File
+	lg       *log.Logger
+}
 
-	// logger
-	var baseLogger *log.Logger
-	var baseFile *os.File
-	if pathname != "" {
-		now := time.Now()
+func SetPrefix(title string) {
+	log.SetPrefix(title)
+}
 
-		filename := fmt.Sprintf("%d%02d%02d_%02d_%02d_%02d.log",
-			now.Year(),
-			now.Month(),
-			now.Day(),
-			now.Hour(),
-			now.Minute(),
-			now.Second())
+func SetConsole(isConsole bool) {
+	consoleAppender = isConsole
+}
 
-		file, err := os.Create(path.Join(pathname, filename))
-		if err != nil {
-			return nil, err
+func SetLevel(_level LEVEL) {
+	logLevel = _level
+}
+
+func SetRollingFile(fileDir, fileName string, maxNumber int32, maxSize int64, _unit UNIT) {
+	maxFileCount = maxNumber
+	maxFileSize = maxSize * int64(_unit)
+	RollingFile = true
+	dailyRolling = false
+	mkdirlog(fileDir)
+	logObj = &_FILE{dir: fileDir, filename: fileName, isCover: false, mu: new(sync.RWMutex)}
+	logObj.mu.Lock()
+	defer logObj.mu.Unlock()
+	for i := 1; i <= int(maxNumber); i++ {
+		if isExist(fileDir + "/" + fileName + "." + strconv.Itoa(i)) {
+			logObj._suffix = i
+		} else {
+			break
 		}
-
-		baseLogger = log.New(file, "", flag)
-		baseFile = file
+	}
+	if !logObj.isMustRename() {
+		logObj.logfile, _ = os.OpenFile(fileDir+"/"+fileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+		logObj.lg = log.New(logObj.logfile, "", log.Ldate|log.Ltime|log.Lshortfile)
 	} else {
-		baseLogger = log.New(os.Stdout, "", flag)
+		logObj.rename()
 	}
-
-	// new
-	logger := new(Logger)
-	logger.level = level
-	logger.baseLogger = baseLogger
-	logger.baseFile = baseFile
-
-	return logger, nil
+	go fileMonitor()
 }
 
-// It's dangerous to call the method on logging
-func (logger *Logger) Close() {
-	if logger.baseFile != nil {
-		logger.baseFile.Close()
-	}
+func SetRollingDaily(fileDir, fileName string) {
+	RollingFile = false
+	dailyRolling = true
+	t, _ := time.Parse(DATEFORMAT, time.Now().Format(DATEFORMAT))
+	mkdirlog(fileDir)
+	logObj = &_FILE{dir: fileDir, filename: fileName, _date: &t, isCover: false, mu: new(sync.RWMutex)}
+	logObj.mu.Lock()
+	defer logObj.mu.Unlock()
 
-	logger.baseLogger = nil
-	logger.baseFile = nil
-}
-
-func (logger *Logger) doPrintf(level int, printLevel string, format string, a ...interface{}) {
-	if level < logger.level {
-		return
-	}
-	if logger.baseLogger == nil {
-		panic("logger closed")
-	}
-
-	format = printLevel + format
-	logger.baseLogger.Output(3, fmt.Sprintf(format, a...))
-
-	if level == fatalLevel {
-		os.Exit(1)
+	if !logObj.isMustRename() {
+		logObj.logfile, _ = os.OpenFile(fileDir+"/"+fileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+		logObj.lg = log.New(logObj.logfile, "", log.Ldate|log.Ltime|log.Lshortfile)
+	} else {
+		logObj.rename()
 	}
 }
 
-func (logger *Logger) Debug(format string, a ...interface{}) {
-	logger.doPrintf(debugLevel, printDebugLevel, format, a...)
+func mkdirlog(dir string) (e error) {
+	_, er := os.Stat(dir)
+	b := er == nil || os.IsExist(er)
+	if !b {
+		if err := os.MkdirAll(dir, 0666); err != nil {
+			if os.IsPermission(err) {
+				fmt.Println("create dir error:", err.Error())
+				e = err
+			}
+		}
+	}
+	return
 }
 
-func (logger *Logger) Release(format string, a ...interface{}) {
-	logger.doPrintf(releaseLevel, printReleaseLevel, format, a...)
-}
-
-func (logger *Logger) Error(format string, a ...interface{}) {
-	logger.doPrintf(errorLevel, printErrorLevel, format, a...)
-}
-
-func (logger *Logger) Fatal(format string, a ...interface{}) {
-	logger.doPrintf(fatalLevel, printFatalLevel, format, a...)
-}
-
-var gLogger, _ = New("debug", "", log.LstdFlags)
-
-// It's dangerous to call the method on logging
-func Export(logger *Logger) {
-	if logger != nil {
-		gLogger = logger
+func console(s ...interface{}) {
+	if consoleAppender {
+		_, file, line, _ := runtime.Caller(2)
+		short := file
+		for i := len(file) - 1; i > 0; i-- {
+			if file[i] == '/' {
+				short = file[i+1:]
+				break
+			}
+		}
+		file = short
+		log.Println(file, strconv.Itoa(line), s)
 	}
 }
 
-func Debug(format string, a ...interface{}) {
-	gLogger.doPrintf(debugLevel, printDebugLevel, format, a...)
+func catchError() {
+	if err := recover(); err != nil {
+		log.Println("err", err)
+	}
 }
 
-func Release(format string, a ...interface{}) {
-	gLogger.doPrintf(releaseLevel, printReleaseLevel, format, a...)
+func Debug(format string, v ...interface{}) {
+	if dailyRolling {
+		fileCheck()
+	}
+	defer catchError()
+	if logObj != nil {
+		logObj.mu.RLock()
+		defer logObj.mu.RUnlock()
+	}
+
+	if logLevel <= DEBUG {
+		if logObj != nil {
+			logObj.lg.Output(2, fmt.Sprintln(debug_str, fmt.Sprintf(format, v...)))
+		}
+		console(debug_str, fmt.Sprintf(format, v...))
+	}
+}
+func Info(format string, v ...interface{}) {
+	if dailyRolling {
+		fileCheck()
+	}
+	defer catchError()
+	if logObj != nil {
+		logObj.mu.RLock()
+		defer logObj.mu.RUnlock()
+	}
+	if logLevel <= INFO {
+		if logObj != nil {
+			logObj.lg.Output(3, fmt.Sprintln(info_str, fmt.Sprintf(format, v...)))
+		}
+		console(info_str, fmt.Sprintf(format, v...))
+	}
+}
+func Warn(format string, v ...interface{}) {
+	if dailyRolling {
+		fileCheck()
+	}
+	defer catchError()
+	if logObj != nil {
+		logObj.mu.RLock()
+		defer logObj.mu.RUnlock()
+	}
+
+	if logLevel <= WARN {
+		if logObj != nil {
+			logObj.lg.Output(2, fmt.Sprintln(warn_str,fmt.Sprintf(format, v...)))
+		}
+		console(warn_str,fmt.Sprintf(format, v...))
+	}
+}
+func Error(format string, v ...interface{}) {
+	if dailyRolling {
+		fileCheck()
+	}
+	defer catchError()
+	if logObj != nil {
+		logObj.mu.RLock()
+		defer logObj.mu.RUnlock()
+	}
+	if logLevel <= ERROR {
+		if logObj != nil {
+			logObj.lg.Output(2, fmt.Sprintln(error_str, fmt.Sprintf(format, v...)))
+		}
+		console(error_str, fmt.Sprintf(format, v...))
+	}
+}
+func Fatal(format string, v ...interface{}) {
+	if dailyRolling {
+		fileCheck()
+	}
+	defer catchError()
+	if logObj != nil {
+		logObj.mu.RLock()
+		defer logObj.mu.RUnlock()
+	}
+	if logLevel <= FATAL {
+		if logObj != nil {
+			logObj.lg.Output(2, fmt.Sprintln(fatal_str, fmt.Sprintf(format, v...)))
+		}
+		console(fatal_str, fmt.Sprintf(format, v...))
+	}
 }
 
-func Error(format string, a ...interface{}) {
-	gLogger.doPrintf(errorLevel, printErrorLevel, format, a...)
+func (f *_FILE) isMustRename() bool {
+	if dailyRolling {
+		t, _ := time.Parse(DATEFORMAT, time.Now().Format(DATEFORMAT))
+		if t.After(*f._date) {
+			return true
+		}
+	} else {
+		if maxFileCount > 1 {
+			if fileSize(f.dir+"/"+f.filename) >= maxFileSize {
+				return true
+			}
+		}
+	}
+	return false
 }
 
-func Fatal(format string, a ...interface{}) {
-	gLogger.doPrintf(fatalLevel, printFatalLevel, format, a...)
+func (f *_FILE) rename() {
+	if dailyRolling {
+		fn := f.dir + "/" + f.filename + "." + f._date.Format(DATEFORMAT)
+		if !isExist(fn) && f.isMustRename() {
+			if f.logfile != nil {
+				f.logfile.Close()
+			}
+			err := os.Rename(f.dir+"/"+f.filename, fn)
+			if err != nil {
+				f.lg.Println("rename err", err.Error())
+			}
+			t, _ := time.Parse(DATEFORMAT, time.Now().Format(DATEFORMAT))
+			f._date = &t
+			f.logfile, _ = os.Create(f.dir + "/" + f.filename)
+			f.lg = log.New(logObj.logfile, "", log.Ldate|log.Ltime|log.Lshortfile)
+		}
+	} else {
+		f.coverNextOne()
+	}
 }
 
-func Close() {
-	gLogger.Close()
+func (f *_FILE) nextSuffix() int {
+	return int(f._suffix%int(maxFileCount) + 1)
+}
+
+func (f *_FILE) coverNextOne() {
+	f._suffix = f.nextSuffix()
+	if f.logfile != nil {
+		f.logfile.Close()
+	}
+	if isExist(f.dir + "/" + f.filename + "." + strconv.Itoa(int(f._suffix))) {
+		os.Remove(f.dir + "/" + f.filename + "." + strconv.Itoa(int(f._suffix)))
+	}
+	os.Rename(f.dir+"/"+f.filename, f.dir+"/"+f.filename+"."+strconv.Itoa(int(f._suffix)))
+	f.logfile, _ = os.Create(f.dir + "/" + f.filename)
+	f.lg = log.New(logObj.logfile, "", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func fileSize(file string) int64 {
+	fmt.Println("fileSize", file)
+	f, e := os.Stat(file)
+	if e != nil {
+		fmt.Println(e.Error())
+		return 0
+	}
+	return f.Size()
+}
+
+func isExist(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || os.IsExist(err)
+}
+
+func fileMonitor() {
+	timer := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			fileCheck()
+		}
+	}
+}
+
+func fileCheck() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+	if logObj != nil && logObj.isMustRename() {
+		logObj.mu.Lock()
+		defer logObj.mu.Unlock()
+		logObj.rename()
+	}
 }
