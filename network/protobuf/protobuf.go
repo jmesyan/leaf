@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/name5566/leaf/chanrpc"
-	"github.com/name5566/leaf/log"
+	"github.com/jmesyan/leaf/chanrpc"
+	"github.com/jmesyan/leaf/log"
+	"github.com/jmesyan/leaf/network"
 	//"math"
 	"reflect"
 )
@@ -18,7 +19,7 @@ import (
 type Processor struct {
 	littleEndian bool
 	msgInfo map[string]*MsgInfo
-
+	rpcHandler network.RpcHandler
 }
 
 type MsgInfo struct {
@@ -45,6 +46,10 @@ func NewProcessor() *Processor {
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
 func (p *Processor) SetByteOrder(littleEndian bool) {
 	p.littleEndian = littleEndian
+}
+
+func (p *Processor) SetRpcHandler(rpcHandler network.RpcHandler){
+	p.rpcHandler = rpcHandler
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
@@ -110,6 +115,9 @@ func (p *Processor) SetRawHandler(msgID string, msgRawHandler MsgHandler) {
 
 // goroutine safe
 func (p *Processor) Route(msg interface{}, userData interface{}) error {
+	if (p.rpcHandler != nil){
+		return p.rpcHandler.Route(msg, userData)
+	}
 	// raw
 	if msgRaw, ok := msg.(MsgRaw); ok {
 		i, ok := p.msgInfo[msgRaw.msgID]
@@ -143,6 +151,9 @@ func (p *Processor) Route(msg interface{}, userData interface{}) error {
 
 // goroutine safe
 func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
+	if (p.rpcHandler != nil){
+		return p.rpcHandler.Unmarshal(data)
+	}
 
 	var m map[string][]byte
 	err := json.Unmarshal(data, &m)
@@ -174,6 +185,10 @@ func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
 
 // goroutine safe
 func (p *Processor) Marshal(msg interface{}) ([][]byte, error) {
+	if (p.rpcHandler != nil){
+		return p.rpcHandler.Marshal(msg)
+	}
+
 	msgType := reflect.TypeOf(msg)
 	if msgType == nil || msgType.Kind() != reflect.Ptr {
 		return nil, errors.New("json message pointer required")
