@@ -345,3 +345,4 @@ func fileCheck() {
 		logObj.rename()
 	}
 }
+

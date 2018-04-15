@@ -1,7 +1,7 @@
 package network
 
 type RpcHandler interface {
-	Marshal(msg interface{}) ([][]byte, error)
-	Unmarshal(data []byte) (interface{}, error)
-	Route(msg interface{}, userData interface{}) error
+	Marshal(p *Processer, msg interface{}) ([][]byte, error)
+	Unmarshal(p *Processer, data []byte) (interface{}, error)
+	Route(p *Processer, msg interface{}, userData interface{}) error
 }
