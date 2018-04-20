@@ -2,9 +2,9 @@ package network
 
 type Processor interface {
 	// must goroutine safe
-	Route(msg interface{}, userData interface{}) error
+	Route(a AgentServer, msg []interface{}) error
 	// must goroutine safe
-	Unmarshal(data []byte) (interface{}, error)
+	Unmarshal(data []byte) ([]interface{}, error)
 	// must goroutine safe
-	Marshal(msg interface{}) ([][]byte, error)
+	Marshal(msg []interface{}) ([][]byte, error)
 }

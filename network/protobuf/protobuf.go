@@ -115,9 +115,6 @@ func (p *Processor) SetRawHandler(msgID string, msgRawHandler MsgHandler) {
 
 // goroutine safe
 func (p *Processor) Route(msg interface{}, userData interface{}) error {
-	if p.rpcHandler != nil {
-		return p.rpcHandler.Route(p, msg, userData)
-	}
 	// raw
 	if msgRaw, ok := msg.(MsgRaw); ok {
 		i, ok := p.PmsgInfo[msgRaw.msgID]
@@ -151,10 +148,6 @@ func (p *Processor) Route(msg interface{}, userData interface{}) error {
 
 // goroutine safe
 func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
-	if p.rpcHandler != nil {
-		return p.rpcHandler.Unmarshal(p, data)
-	}
-
 	var m map[string][]byte
 	err := json.Unmarshal(data, &m)
 	if err != nil {
@@ -185,10 +178,6 @@ func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
 
 // goroutine safe
 func (p *Processor) Marshal(msg interface{}) ([][]byte, error) {
-	if p.rpcHandler != nil {
-		return p.rpcHandler.Marshal(p, msg)
-	}
-
 	MsgType := reflect.TypeOf(msg)
 	if MsgType == nil || MsgType.Kind() != reflect.Ptr {
 		return nil, errors.New("json message pointer required")

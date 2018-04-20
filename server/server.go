@@ -7,14 +7,23 @@ import (
 	"reflect"
 	"time"
 )
+type ServerType int32
+
+const (
+	SERVER_MASTER ServerType = iota+1
+	SERVER_GAME
+	SERVER_GATE
+)
 
 type Server struct {
+	SrvType ServerType
 	MaxConnNum      int
 	PendingWriteNum int
 	MaxMsgLen       uint32
 	Processor       network.Processor
 	Onconnected    func(*AgentConn)
 	OndisConnected func(*AgentConn) error
+	OnMasterConnected func(*AgentConn)
 
 	// websocket
 	WSAddr      string
@@ -26,6 +35,9 @@ type Server struct {
 	TCPAddr      string
 	LenMsgLen    int
 	LittleEndian bool
+
+	//master
+	MasterAddr  string
 }
 
 func (server *Server) Run(closeSig chan bool) {
@@ -40,7 +52,8 @@ func (server *Server) Run(closeSig chan bool) {
 		wsServer.CertFile = server.CertFile
 		wsServer.KeyFile = server.KeyFile
 		wsServer.NewAgent = func(conn *network.WSConn) network.Agent {
-			a := &AgentConn{conn: conn, server: server}
+			a := &AgentConn{conn: conn, server: server, ticker:0}
+			a.callbacks = make(map[uint16]func([]interface{}))
 			if server.Onconnected != nil {
 				server.Onconnected(a)
 			}
@@ -58,9 +71,30 @@ func (server *Server) Run(closeSig chan bool) {
 		tcpServer.MaxMsgLen = server.MaxMsgLen
 		tcpServer.LittleEndian = server.LittleEndian
 		tcpServer.NewAgent = func(conn *network.TCPConn) network.Agent {
-			a := &AgentConn{conn: conn, server: server}
+			a := &AgentConn{conn: conn, server: server, ticker:0}
+			a.callbacks = make(map[uint16]func([]interface{}))
 			if server.Onconnected != nil {
 				server.Onconnected(a)
+			}
+			return a
+		}
+	}
+
+	var msClient *network.TCPClient
+	if server.SrvType != SERVER_MASTER && server.MasterAddr != "" {
+		msClient = new(network.TCPClient)
+		msClient.AutoReconnect = false
+		msClient.Addr = server.MasterAddr
+		msClient.ConnNum = 1
+		msClient.ConnectInterval = 3 * time.Second
+		msClient.PendingWriteNum = server.PendingWriteNum
+		msClient.LenMsgLen = server.LenMsgLen
+		msClient.MaxMsgLen = server.MaxMsgLen
+		msClient.NewAgent = func(conn *network.TCPConn) network.Agent{
+			a := &AgentConn{conn: conn, server: server, ticker:0}
+			a.callbacks = make(map[uint16]func([]interface{}))
+			if server.OnMasterConnected != nil {
+				server.OnMasterConnected(a)
 			}
 			return a
 		}
@@ -72,12 +106,19 @@ func (server *Server) Run(closeSig chan bool) {
 	if tcpServer != nil {
 		tcpServer.Start()
 	}
+	if (msClient != nil){
+		msClient.Start()
+	}
 	<-closeSig
 	if wsServer != nil {
 		wsServer.Close()
 	}
 	if tcpServer != nil {
 		tcpServer.Close()
+	}
+
+	if msClient != nil{
+		msClient.Close()
 	}
 }
 
@@ -87,6 +128,8 @@ type AgentConn struct {
 	conn     network.Conn
 	server     *Server
 	userData interface{}
+	ticker    uint16
+	callbacks map[uint16]func([]interface{})
 }
 
 func (a *AgentConn) Run() {
@@ -96,14 +139,14 @@ func (a *AgentConn) Run() {
 			log.Debug("read message: %v", err)
 			break
 		}
-
+		log.Debug("read date=>%v", data)
 		if a.server.Processor != nil {
 			msg, err := a.server.Processor.Unmarshal(data)
 			if err != nil {
 				log.Debug("unmarshal message error: %v", err)
 				break
 			}
-			err = a.server.Processor.Route(msg, a)
+			err = a.server.Processor.Route(a, msg)
 			if err != nil {
 				log.Debug("route message error: %v", err)
 				break
@@ -121,7 +164,7 @@ func (a *AgentConn) OnClose() {
 	}
 }
 
-func (a *AgentConn) WriteMsg(msg interface{}) {
+func (a *AgentConn) WriteMsg(msg []interface{}) {
 	if a.server.Processor != nil {
 		data, err := a.server.Processor.Marshal(msg)
 		if err != nil {
@@ -157,4 +200,25 @@ func (a *AgentConn) UserData() interface{} {
 
 func (a *AgentConn) SetUserData(data interface{}) {
 	a.userData = data
+}
+
+func (a *AgentConn) GetTick(callback func([]interface{})) uint16{
+	if (callback != nil) {
+		if (a.ticker > 65535){
+			a.ticker = 0
+		};
+		a.ticker++;
+		a.callbacks[a.ticker] = callback;
+		return a.ticker;
+	}
+	return 0;
+}
+
+func (a *AgentConn) ExecTick(tick uint16, data []interface{}) bool{
+	if callback, ok := a.callbacks[tick];ok{
+		callback(data)
+		delete(a.callbacks, tick)
+		return true;
+	}
+	return false;
 }
