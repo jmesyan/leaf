@@ -12,8 +12,8 @@ import (
 // | id | protobuf message |
 // -------------------------
 type Processer struct {
-	littleEndian bool
-	PmsgInfo      map[uint16]*MsgInfo
+	LittleEndian bool
+	PmsgInfo      map[uint32]*MsgInfo
 	rpcHandler  	RpcHandler
 }
 
@@ -27,14 +27,14 @@ type MsgHandler func([]interface{})
 
 func NewProcesser() *Processer {
 	p := new(Processer)
-	p.littleEndian = false
-	p.PmsgInfo = make(map[uint16]*MsgInfo)
+	p.LittleEndian = false
+	p.PmsgInfo = make(map[uint32]*MsgInfo)
 	return p
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
 func (p *Processer) SetByteOrder(littleEndian bool) {
-	p.littleEndian = littleEndian
+	p.LittleEndian = littleEndian
 }
 
 func (p *Processer) SetRpcHandler(rpcHandler RpcHandler) {
@@ -42,7 +42,7 @@ func (p *Processer) SetRpcHandler(rpcHandler RpcHandler) {
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processer) Register(cmd uint16, msg proto.Message) {
+func (p *Processer) Register(cmd uint32, msg proto.Message) {
 	MsgType := reflect.TypeOf(msg)
 	if MsgType == nil || MsgType.Kind() != reflect.Ptr {
 		log.Fatal("protobuf message pointer required")
@@ -57,7 +57,7 @@ func (p *Processer) Register(cmd uint16, msg proto.Message) {
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processer) SetRouter(cmd uint16, MsgRouter *chanrpc.Server) {
+func (p *Processer) SetRouter(cmd uint32, MsgRouter *chanrpc.Server) {
 	i, ok := p.PmsgInfo[cmd]
 	if !ok {
 		log.Fatal("message %v not registered", cmd)
@@ -67,7 +67,7 @@ func (p *Processer) SetRouter(cmd uint16, MsgRouter *chanrpc.Server) {
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processer) SetHandler(cmd uint16, MsgHandler MsgHandler) {
+func (p *Processer) SetHandler(cmd uint32, MsgHandler MsgHandler) {
 	i, ok := p.PmsgInfo[cmd]
 	if !ok {
 		log.Fatal("message %v not registered", cmd)

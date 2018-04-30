@@ -4,15 +4,24 @@ import (
 	"encoding/binary"
 )
 
-func BytesToUint16(b []byte) uint16 {
+func BytesToUint32(littleEndian bool, b []byte) uint32 {
 	bytesBuffer := bytes.NewBuffer(b)
-	var tmp uint16
-	binary.Read(bytesBuffer, binary.BigEndian, &tmp)
+	var tmp uint32
+	if littleEndian {
+		binary.Read(bytesBuffer, binary.LittleEndian, &tmp)
+	} else {
+		binary.Read(bytesBuffer, binary.BigEndian, &tmp)
+	}
+
 	return tmp
 }
 
-func Uint16ToBytes(i uint16) []byte {
-	var buf = make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, i)
+func Uint32ToBytes(littleEndian bool,i uint32) []byte {
+	var buf = make([]byte, 4)
+	if littleEndian{
+		binary.LittleEndian.PutUint32(buf, i)
+	} else {
+		binary.BigEndian.PutUint32(buf, i)
+	}
 	return buf
 }

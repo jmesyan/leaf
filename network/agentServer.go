@@ -10,6 +10,6 @@ type AgentServer interface {
 	Destroy()
 	UserData() interface{}
 	SetUserData(data interface{})
-	GetTick(callback func([]interface{})) uint16
-	ExecTick(tick uint16, data []interface{}) bool
+	SetResultData(tick uint32, data []interface{}) error
+	GetResultTicker(callback func([]interface{})) uint32
 }

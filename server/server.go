@@ -6,6 +6,7 @@ import (
 	"net"
 	"reflect"
 	"time"
+	"fmt"
 )
 type ServerType int32
 
@@ -52,8 +53,8 @@ func (server *Server) Run(closeSig chan bool) {
 		wsServer.CertFile = server.CertFile
 		wsServer.KeyFile = server.KeyFile
 		wsServer.NewAgent = func(conn *network.WSConn) network.Agent {
-			a := &AgentConn{conn: conn, server: server, ticker:0}
-			a.callbacks = make(map[uint16]func([]interface{}))
+			a := &AgentConn{conn: conn, server: server}
+			a.ResultMgr = NewAsyncResultMgr()
 			if server.Onconnected != nil {
 				server.Onconnected(a)
 			}
@@ -71,8 +72,8 @@ func (server *Server) Run(closeSig chan bool) {
 		tcpServer.MaxMsgLen = server.MaxMsgLen
 		tcpServer.LittleEndian = server.LittleEndian
 		tcpServer.NewAgent = func(conn *network.TCPConn) network.Agent {
-			a := &AgentConn{conn: conn, server: server, ticker:0}
-			a.callbacks = make(map[uint16]func([]interface{}))
+			a := &AgentConn{conn: conn, server: server}
+			a.ResultMgr = NewAsyncResultMgr()
 			if server.Onconnected != nil {
 				server.Onconnected(a)
 			}
@@ -91,8 +92,8 @@ func (server *Server) Run(closeSig chan bool) {
 		msClient.LenMsgLen = server.LenMsgLen
 		msClient.MaxMsgLen = server.MaxMsgLen
 		msClient.NewAgent = func(conn *network.TCPConn) network.Agent{
-			a := &AgentConn{conn: conn, server: server, ticker:0}
-			a.callbacks = make(map[uint16]func([]interface{}))
+			a := &AgentConn{conn: conn, server: server}
+			a.ResultMgr = NewAsyncResultMgr()
 			if server.OnMasterConnected != nil {
 				server.OnMasterConnected(a)
 			}
@@ -128,8 +129,7 @@ type AgentConn struct {
 	conn     network.Conn
 	server     *Server
 	userData interface{}
-	ticker    uint16
-	callbacks map[uint16]func([]interface{})
+	ResultMgr  *AsyncResultMgr
 }
 
 func (a *AgentConn) Run() {
@@ -202,23 +202,18 @@ func (a *AgentConn) SetUserData(data interface{}) {
 	a.userData = data
 }
 
-func (a *AgentConn) GetTick(callback func([]interface{})) uint16{
-	if (callback != nil) {
-		if (a.ticker > 65535){
-			a.ticker = 0
-		};
-		a.ticker++;
-		a.callbacks[a.ticker] = callback;
-		return a.ticker;
-	}
-	return 0;
+func (a *AgentConn) SetResultData(tick uint32, data []interface{}) error{
+	return a.ResultMgr.FillAsyncResult(tick, data)
 }
 
-func (a *AgentConn) ExecTick(tick uint16, data []interface{}) bool{
-	if callback, ok := a.callbacks[tick];ok{
-		callback(data)
-		delete(a.callbacks, tick)
-		return true;
+func (a *AgentConn) GetResultTicker(callback func([]interface{})) uint32{
+	if callback == nil{
+		return 0
 	}
-	return false;
+	asyncR, err := a.ResultMgr.Add(false,callback)
+	if (err != nil){
+		fmt.Println(err)
+		return 0;
+	}
+	return asyncR.GetKey()
 }
