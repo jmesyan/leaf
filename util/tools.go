@@ -39,14 +39,8 @@ func BytesToUint8(littleEndian bool, b []byte) uint8 {
 	return tmp
 }
 
-func Uint8ToBytes(littleEndian bool,i uint8) []byte {
-	var buf = make([]byte, 1)
-	if littleEndian{
-		binary.LittleEndian.PutUint8(buf, i)
-	} else {
-		binary.BigEndian.PutUint8(buf, i)
-	}
-	return buf
+func Uint8ToBytes(i uint8) []byte {
+	return []byte{i}
 }
 
 func BytesToUint16(littleEndian bool, b []byte) uint16 {

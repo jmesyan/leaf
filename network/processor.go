@@ -9,6 +9,4 @@ type Processor interface {
 	Marshal(msg []interface{}) ([][]byte, error)
 
 	GetLittleEndian() bool
-
-	GetMsgInfo() map[uint32]*MsgInfo
 }
