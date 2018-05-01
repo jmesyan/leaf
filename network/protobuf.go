@@ -12,8 +12,8 @@ import (
 // | id | protobuf message |
 // -------------------------
 type Processer struct {
-	LittleEndian bool
-	PmsgInfo      map[uint32]*MsgInfo
+	littleEndian bool
+	pmsgInfo      map[uint32]*MsgInfo
 	rpcHandler  	RpcHandler
 }
 
@@ -27,14 +27,14 @@ type MsgHandler func([]interface{})
 
 func NewProcesser() *Processer {
 	p := new(Processer)
-	p.LittleEndian = false
-	p.PmsgInfo = make(map[uint32]*MsgInfo)
+	p.littleEndian = false
+	p.pmsgInfo = make(map[uint32]*MsgInfo)
 	return p
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
 func (p *Processer) SetByteOrder(littleEndian bool) {
-	p.LittleEndian = littleEndian
+	p.littleEndian = littleEndian
 }
 
 func (p *Processer) SetRpcHandler(rpcHandler RpcHandler) {
@@ -47,18 +47,18 @@ func (p *Processer) Register(cmd uint32, msg proto.Message) {
 	if MsgType == nil || MsgType.Kind() != reflect.Ptr {
 		log.Fatal("protobuf message pointer required")
 	}
-	if _, ok := p.PmsgInfo[cmd]; ok {
+	if _, ok := p.pmsgInfo[cmd]; ok {
 		log.Fatal("message %v is already registered", cmd)
 	}
 
 	i := new(MsgInfo)
 	i.MsgType = MsgType
-	p.PmsgInfo[cmd] = i
+	p.pmsgInfo[cmd] = i
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
 func (p *Processer) SetRouter(cmd uint32, MsgRouter *chanrpc.Server) {
-	i, ok := p.PmsgInfo[cmd]
+	i, ok := p.pmsgInfo[cmd]
 	if !ok {
 		log.Fatal("message %v not registered", cmd)
 	}
@@ -68,7 +68,7 @@ func (p *Processer) SetRouter(cmd uint32, MsgRouter *chanrpc.Server) {
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
 func (p *Processer) SetHandler(cmd uint32, MsgHandler MsgHandler) {
-	i, ok := p.PmsgInfo[cmd]
+	i, ok := p.pmsgInfo[cmd]
 	if !ok {
 		log.Fatal("message %v not registered", cmd)
 	}
@@ -78,9 +78,9 @@ func (p *Processer) SetHandler(cmd uint32, MsgHandler MsgHandler) {
 
 
 // goroutine safe
-func (p *Processer) Route(agent AgentServer, msg []interface{}) error {
+func (p *Processer) Route(a AgentServer, msg []interface{}) error {
 	if p.rpcHandler != nil {
-		return p.rpcHandler.Route(agent, p, msg)
+		return p.rpcHandler.Route(a, p, msg)
 	}
 	panic("bug")
 	return nil
@@ -100,23 +100,16 @@ func (p *Processer) Marshal(msg []interface{}) ([][]byte, error) {
 	if p.rpcHandler != nil {
 		return p.rpcHandler.Marshal(p, msg)
 	}
-
-	//MsgType := reflect.TypeOf(msg)
-	//if MsgType == nil || MsgType.Kind() != reflect.Ptr {
-	//	return nil, errors.New("json message pointer required")
-	//}
-	//msgID := MsgType.Elem().Name()
-	//if _, ok := p.PmsgInfo[msgID]; !ok {
-	//	return nil, fmt.Errorf("message %v not registered", msgID)
-	//}
-	//
-	//pmsg, err := proto.Marshal(msg.(proto.Message))
-	//if err != nil {
-	//	return nil, fmt.Errorf("message %v marshal failed", msg)
-	//}
-	//// data
-	//m := map[string][]byte{msgID: pmsg}
-	//data, err := json.Marshal(m)
 	return nil, nil
 }
+
+func (p *Processer) GetlittleEndian() bool{
+	return p.littleEndian
+}
+
+func (p *Processer) GetMsgInfo() map[uint32]*MsgInfo{
+	return p.pmsgInfo
+}
+
+
 

@@ -217,3 +217,7 @@ func (a *AgentConn) GetResultTicker(callback func([]interface{})) uint32{
 	}
 	return asyncR.GetKey()
 }
+
+func (a *AgentConn) GetServerProcessor() network.Processor{
+	return a.server.Processor
+}

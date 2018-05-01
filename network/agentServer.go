@@ -12,4 +12,5 @@ type AgentServer interface {
 	SetUserData(data interface{})
 	SetResultData(tick uint32, data []interface{}) error
 	GetResultTicker(callback func([]interface{})) uint32
+	GetServerProcessor() Processor
 }

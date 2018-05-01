@@ -7,4 +7,8 @@ type Processor interface {
 	Unmarshal(data []byte) ([]interface{}, error)
 	// must goroutine safe
 	Marshal(msg []interface{}) ([][]byte, error)
+
+	GetLittleEndian() bool
+
+	GetMsgInfo() map[uint32]*MsgInfo
 }
