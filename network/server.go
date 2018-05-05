@@ -1,8 +1,7 @@
-package server
+package network
 
 import (
 	"github.com/jmesyan/leaf/log"
-	"github.com/jmesyan/leaf/network"
 	"net"
 	"reflect"
 	"time"
@@ -21,7 +20,7 @@ type Server struct {
 	MaxConnNum      int
 	PendingWriteNum int
 	MaxMsgLen       uint32
-	Processor       network.Processor
+	Processor       Processor
 	Onconnected    func(*AgentConn)
 	OndisConnected func(*AgentConn) error
 	OnMasterConnected func(*AgentConn)
@@ -42,9 +41,9 @@ type Server struct {
 }
 
 func (server *Server) Run(closeSig chan bool) {
-	var wsServer *network.WSServer
+	var wsServer *WSServer
 	if server.WSAddr != "" {
-		wsServer = new(network.WSServer)
+		wsServer = new(WSServer)
 		wsServer.Addr = server.WSAddr
 		wsServer.MaxConnNum = server.MaxConnNum
 		wsServer.PendingWriteNum = server.PendingWriteNum
@@ -52,7 +51,7 @@ func (server *Server) Run(closeSig chan bool) {
 		wsServer.HTTPTimeout = server.HTTPTimeout
 		wsServer.CertFile = server.CertFile
 		wsServer.KeyFile = server.KeyFile
-		wsServer.NewAgent = func(conn *network.WSConn) network.Agent {
+		wsServer.NewAgent = func(conn *WSConn) Agent {
 			a := &AgentConn{conn: conn, server: server}
 			a.ResultMgr = NewAsyncResultMgr()
 			if server.Onconnected != nil {
@@ -62,16 +61,16 @@ func (server *Server) Run(closeSig chan bool) {
 		}
 	}
 
-	var tcpServer *network.TCPServer
+	var tcpServer *TCPServer
 	if server.TCPAddr != "" {
-		tcpServer = new(network.TCPServer)
+		tcpServer = new(TCPServer)
 		tcpServer.Addr = server.TCPAddr
 		tcpServer.MaxConnNum = server.MaxConnNum
 		tcpServer.PendingWriteNum = server.PendingWriteNum
 		tcpServer.LenMsgLen = server.LenMsgLen
 		tcpServer.MaxMsgLen = server.MaxMsgLen
 		tcpServer.LittleEndian = server.LittleEndian
-		tcpServer.NewAgent = func(conn *network.TCPConn) network.Agent {
+		tcpServer.NewAgent = func(conn *TCPConn) Agent {
 			a := &AgentConn{conn: conn, server: server}
 			a.ResultMgr = NewAsyncResultMgr()
 			if server.Onconnected != nil {
@@ -81,9 +80,9 @@ func (server *Server) Run(closeSig chan bool) {
 		}
 	}
 
-	var msClient *network.TCPClient
+	var msClient *TCPClient
 	if server.SrvType != SERVER_MASTER && server.MasterAddr != "" {
-		msClient = new(network.TCPClient)
+		msClient = new(TCPClient)
 		msClient.AutoReconnect = false
 		msClient.Addr = server.MasterAddr
 		msClient.ConnNum = 1
@@ -91,7 +90,7 @@ func (server *Server) Run(closeSig chan bool) {
 		msClient.PendingWriteNum = server.PendingWriteNum
 		msClient.LenMsgLen = server.LenMsgLen
 		msClient.MaxMsgLen = server.MaxMsgLen
-		msClient.NewAgent = func(conn *network.TCPConn) network.Agent{
+		msClient.NewAgent = func(conn *TCPConn) Agent{
 			a := &AgentConn{conn: conn, server: server}
 			a.ResultMgr = NewAsyncResultMgr()
 			if server.OnMasterConnected != nil {
@@ -126,7 +125,7 @@ func (server *Server) Run(closeSig chan bool) {
 func (server *Server) OnDestroy() {}
 
 type AgentConn struct {
-	conn     network.Conn
+	conn     Conn
 	server     *Server
 	userData interface{}
 	ResultMgr  *AsyncResultMgr
@@ -218,6 +217,6 @@ func (a *AgentConn) GetResultTicker(callback func([]interface{})) uint32{
 	return asyncR.GetKey()
 }
 
-func (a *AgentConn) GetServerProcessor() network.Processor{
-	return a.server.Processor
+func (a *AgentConn) GetServer() *Server{
+	return a.server
 }
