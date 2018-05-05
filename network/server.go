@@ -21,9 +21,9 @@ type Server struct {
 	PendingWriteNum int
 	MaxMsgLen       uint32
 	Processor       Processor
-	Onconnected    func(*AgentConn)
-	OndisConnected func(*AgentConn) error
-	OnMasterConnected func(*AgentConn)
+	Onconnected    func(SrvAgent)
+	OndisConnected func(SrvAgent) error
+	OnMasterConnected func(SrvAgent)
 
 	// websocket
 	WSAddr      string
